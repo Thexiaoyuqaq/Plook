@@ -1,75 +1,120 @@
 <template>
-    <div class="w-div">
-        <el-card shadow="always">
-            <p class="p-div">登录</p>
-            <el-input v-model="userName" placeholder="请输入用户名" />
-            <el-button type="primary" @click="login" plain>登录</el-button>
-        </el-card>
-    </div>
+  <main class="login-page">
+    <section class="login-panel">
+      <div class="brand-row">
+        <img src="../assets/favicon.svg" alt="Plook" />
+        <div>
+          <h1>Plook</h1>
+          <p>一起看视频</p>
+        </div>
+      </div>
+
+      <form class="login-form" @submit.prevent="login">
+        <input v-model="userName" class="text-input" maxlength="24" placeholder="输入昵称" />
+        <button class="primary-button login-button" type="submit">进入</button>
+      </form>
+    </section>
+  </main>
 </template>
 
-<script>
-import { ElMessage } from "element-plus";
-import Cookie from "js-cookie";
-import { mapState } from "vuex"
-export default {
-    name:"login",
-    mounted(){
-      this.userName = this.$store.getters.getUserUserName
-    },
-    data(){
-        return{
-            userName:null
-        }
-    },
-    methods:{
-        login(){
-            if (this.userName==null) {
-                ElMessage.error("请输入用户名")
-            }else{
-                this.$store.commit("setUserUserName",this.userName)
-                //这里留作来判断登录
-                
-                //账号密码正确，设置cookie,并跳转
-                Cookie.set("userId",this.userName)
-                this.$router.push('pc')
-            }
-        }
-    }
+<script setup>
+import { ref } from 'vue'
+import { useRouter } from 'vue-router'
+import { toast } from 'vue-sonner'
+import { useRoomStore } from '../stores/room'
+import { getSavedUserName, saveUserName } from '../utils/session'
+
+const router = useRouter()
+const roomStore = useRoomStore()
+const userName = ref(getSavedUserName() || roomStore.userName || '')
+
+function login() {
+  const trimmed = userName.value.trim()
+  if (!trimmed) {
+    toast.error('请输入昵称')
+    return
+  }
+
+  saveUserName(trimmed)
+  roomStore.setUserName(trimmed)
+  router.push({ name: 'select-room' })
 }
 </script>
 
 <style scoped>
-.w-div {
+.login-page {
+  min-height: 100vh;
+  display: grid;
+  place-items: center;
+  padding: 24px;
+  background: #f6f8fb;
+}
+
+.login-panel {
+  width: min(420px, 100%);
+  padding: 28px;
+  border: 1px solid #d8dee8;
+  border-radius: 8px;
+  background: #fff;
+  box-shadow: 0 16px 40px rgb(31 45 61 / 8%);
+}
+
+.brand-row {
   display: flex;
-  justify-content: center;
+  gap: 14px;
   align-items: center;
-  flex-direction: column;
-  height: 100vh;
-  
+  margin-bottom: 24px;
 }
 
-.el-card {
-    height: 30%;
-    
+.brand-row img {
+  width: 52px;
+  height: 52px;
 }
 
-.p-div {
-    font-size: 20px;
-    text-align: center;
-    margin: 5%;
+.brand-row h1 {
+  margin: 0;
+  font-size: 26px;
+  letter-spacing: 0;
 }
 
-
-
-/* Set the width of the el-button to 100% to match the width of the el-input */
-.el-input {
-    margin: 10% 0;
+.brand-row p {
+  margin: 4px 0 0;
+  color: #667085;
 }
 
-.el-button {
+.login-form {
+  display: grid;
+  gap: 14px;
+}
+
+.text-input {
   width: 100%;
-  padding: 5%;
-  
+  height: 42px;
+  padding: 0 12px;
+  border: 1px solid #cfd7e3;
+  border-radius: 8px;
+  outline: none;
+}
+
+.text-input:focus {
+  border-color: #2563eb;
+  box-shadow: 0 0 0 3px rgb(37 99 235 / 12%);
+}
+
+.primary-button {
+  height: 42px;
+  border: 0;
+  border-radius: 8px;
+  background: #2563eb;
+  color: #fff;
+  cursor: pointer;
+}
+
+.primary-button:hover {
+  background: #1d4ed8;
+}
+
+.login-button {
+  width: 100%;
 }
 </style>

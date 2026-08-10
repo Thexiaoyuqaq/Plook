@@ -1,10 +1,8 @@
-<script setup>
-import viewsVideo from "./views/viewsVideo.vue";
-</script>
-
 <template>
-    <router-view></router-view>
+  <router-view />
+  <Toaster position="top-right" richColors />
 </template>
 
-<style scoped>
-</style>
+<script setup>
+import { Toaster } from 'vue-sonner'
+</script>

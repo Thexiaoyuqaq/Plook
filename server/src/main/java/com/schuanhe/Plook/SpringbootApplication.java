@@ -1,32 +1,31 @@
 package com.schuanhe.Plook;
 
 import com.schuanhe.Plook.utils.CurPool;
-import org.mybatis.spring.annotation.MapperScan;
-import org.springframework.beans.factory.support.ManagedList;
+import com.schuanhe.Plook.config.AppProperties;
+import com.schuanhe.Plook.service.SocketService;
+import org.springframework.boot.context.properties.EnableConfigurationProperties;
+import org.springframework.boot.CommandLineRunner;
 import org.springframework.boot.SpringApplication;
 import org.springframework.boot.autoconfigure.SpringBootApplication;
-import org.springframework.context.ConfigurableApplicationContext;
-import org.springframework.context.annotation.ComponentScan;
-
-import java.util.List;
+import org.springframework.context.annotation.Bean;
+import org.springframework.scheduling.annotation.EnableScheduling;
 
 @SpringBootApplication
-@MapperScan(basePackages = {"com.schuanhe.Plook.mapper"})
+@EnableConfigurationProperties(AppProperties.class)
+@EnableScheduling
 public class SpringbootApplication {
 
     public static void main(String[] args) {
-
-        ConfigurableApplicationContext run = SpringApplication.run(SpringbootApplication.class, args);
-
-        List<String> names = new ManagedList<>();
-
-        CurPool.roomList.put("系统默认房间(幻鹤)",names);
-        CurPool.roomList.put("系统默认房间(1)",names);
-        CurPool.roomList.put("系统默认房间(2)",names);
-        CurPool.roomList.put("系统默认房间(3)",names);
-
-
-
+        SpringApplication.run(SpringbootApplication.class, args);
     }
 
+    @Bean
+    CommandLineRunner initializeRooms(AppProperties appProperties) {
+        return args -> {
+            AppProperties.Rooms roomsConfig = appProperties.rooms();
+            SocketService.configure(roomsConfig);
+            long emptyDisbandMinutes = roomsConfig == null ? 10L : roomsConfig.emptyDisbandMinutes();
+            CurPool.reset(emptyDisbandMinutes);
+        };
+    }
 }

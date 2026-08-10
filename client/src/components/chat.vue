@@ -1,87 +1,82 @@
 <template>
-    <el-row class="row-bg" v-if="(chatType == 0)">
-    <el-card class="box-card" body-style="padding:0px 10px; margin:10px;">
-        <div>
-            <p style="font-size: 5px;height: 20px; text-align:left">{{ chatList.ownerId }}</p>
-            <el-divider style="margin:0px" />
-            <p>{{ chatList.data.msg }}</p>            
-        </div>
-
-    </el-card>
-  </el-row>
-  <el-row class="row-bg" v-else-if="(chatType == 1)">
-    <p>欢迎:{{ chatList.ownerId }} 进入房间</p>
-  </el-row>
-  <el-row class="row-bg" v-else-if="(chatType == 3)">
-    <p>{{ chatList.ownerId }} 离开了房间</p>
-  </el-row>
-  
-  <el-row class="row-bg" justify="end" v-else-if="(chatType == 2)">
-    <el-card class="box-card" body-style="padding:0px 10px; margin:10px;">
-        <p style="font-size: 5px;height: 20px; text-align:right; color: green;">{{ userName }}</p>
-        <el-divider style="margin:0px" />
-        <p>{{ chatList.data.msg }}</p>
-    </el-card>    
-  </el-row>
-
+  <article class="chat-item" :class="{ 'is-mine': isMine, 'is-system': message.type === 'system' }">
+    <p v-if="message.type === 'system'" class="system-text">{{ message.text }}</p>
+    <template v-else>
+      <header>
+        <span>{{ isMine ? userName : message.ownerId }}</span>
+        <time>{{ timeText }}</time>
+      </header>
+      <p>{{ message.text }}</p>
+    </template>
+  </article>
 </template>
 
-<script>
+<script setup>
+import { computed } from 'vue'
 
-export default ({
-    name: "chat",
-    components: {
+const props = defineProps({
+  message: {
+    type: Object,
+    required: true,
+  },
+  userName: {
+    type: String,
+    required: true,
+  },
+})
 
-    },
-    props: {
-        chats: {
-            type:Object
-        },
-        userName:{
-            type:String
-        }
-    },
-    data() {
-        return {
-            chatList:null,
-            chatType:null
-        }
-    },
-    created() {
-        // //属性渲染前
-         this.chatList = this.chats
-            if (this.chats.ownerId == this.userName) {
-                this.chatType = 2
-            }else if (this.chats.type == 1) {
-                this.chatType = 1
-                if(this.chats.data.type == 2){
-                    this.chatType = 3 //退出房间
-                }
-            }else{
-                this.chatType = 0
-            }
-    },
-    mounted(){
-        this.$emit('ScrollbarRef')
-    },
-    methods: {
-
-    }
-
+const isMine = computed(() => props.message.ownerId === props.userName)
+const timeText = computed(() => {
+  if (!props.message.sentAt) return ''
+  return new Date(props.message.sentAt).toLocaleTimeString([], {
+    hour: '2-digit',
+    minute: '2-digit',
+  })
 })
 </script>
 
-
-<style>
-.el-row {
-  margin-bottom: 20px;
-}
-#main {
-    display: flex;
-}
-
-.msg_right {
-    text-align: right;
+<style scoped>
+.chat-item {
+  width: fit-content;
+  max-width: 86%;
+  margin: 0 0 12px;
+  padding: 10px 12px;
+  border: 1px solid #d8dee8;
+  border-radius: 8px;
+  background: #fff;
 }
 
+.chat-item.is-mine {
+  margin-left: auto;
+  border-color: #a7d7a7;
+  background: #f0faf0;
+}
+
+.chat-item.is-system {
+  width: 100%;
+  max-width: 100%;
+  border-color: transparent;
+  background: transparent;
+  text-align: center;
+}
+
+.chat-item header {
+  display: flex;
+  justify-content: space-between;
+  gap: 16px;
+  margin-bottom: 6px;
+  color: #667085;
+  font-size: 12px;
+}
+
+.chat-item p {
+  margin: 0;
+  color: #1f2937;
+  word-break: break-word;
+}
+
+.system-text {
+  color: #667085;
+  font-size: 13px;
+}
 </style>

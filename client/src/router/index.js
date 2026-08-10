@@ -1,47 +1,46 @@
-import { createRouter,createWebHashHistory, createWebHistory } from "vue-router"
+import { createRouter, createWebHashHistory } from 'vue-router'
+import { getSavedUserName } from '../utils/session'
 
 const routes = [
-    {
-        path:"/",
-        name:"登录",
-        component:()=>import("../views/login.vue")
-    },
-    {
-        path:"/pc",
-        name:"首页",
-        component:()=>import('../views/viewsVideo.vue'),
-        //重定向页面，默认显示子类
-        redirect:"/pc/selectRoom",
-        children:[
-            {
-                path:"selectRoom",
-                name:"选择房间",
-                component:()=>import("../components/selectRoom.vue")
-            },
-            {
-                path:"video",
-                name:"视频详情",
-                component:()=>import("../components/viewsVideo.vue")
-            }
-        ]
-    },
-    {
-        path:"/test",
-        component:()=>import("../views/test.vue")
-    }
+  {
+    path: '/',
+    name: 'login',
+    component: () => import('../views/login.vue'),
+  },
+  {
+    path: '/pc',
+    name: 'room',
+    component: () => import('../views/viewsVideo.vue'),
+    redirect: '/pc/select-room',
+    children: [
+      {
+        path: 'select-room',
+        name: 'select-room',
+        component: () => import('../components/selectRoom.vue'),
+      },
+      {
+        path: 'video/:roomId(\\d{6})',
+        name: 'video',
+        component: () => import('../components/viewsVideo.vue'),
+      },
+    ],
+  },
 ]
 
 const router = createRouter({
-    //
-    history:createWebHashHistory(),
-    // history:createWebHistory(import.meta.env.VITE_BASE_URL),
-    routes
+  history: createWebHashHistory(),
+  routes,
 })
 
-router.beforeEach((to, from,next) =>{
-    // console.log(to,from)
-    next()
+router.beforeEach((to) => {
+  const isLoggedIn = Boolean(getSavedUserName())
+  if (!isLoggedIn && to.name !== 'login') {
+    return { name: 'login' }
+  }
+  if (isLoggedIn && to.name === 'login') {
+    return { name: 'select-room' }
+  }
+  return true
 })
-
 
 export default router

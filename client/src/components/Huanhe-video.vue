@@ -1,157 +1,202 @@
 <template>
-    <div>
-    <videoPlay
-      ref="video"
-      title="幻鹤开源"
-      :src=this.getVideoInfoSrc.url
-      :type=this.getVideoInfoSrc.type
-      v-bind="options"
-      @play="onPlay"
-      @pause="onPause"
-      @seeked="onPlayerSeeked"
-      @loadstart="loadstart"
-    />
+  <section class="video-panel">
+    <div class="player-wrap">
+      <media-player
+        ref="playerEl"
+        class="plook-player"
+        :title="playerTitle"
+        :src="playerSources"
+        playsinline
+        crossorigin
+        @play="onPlay"
+        @pause="onPause"
+        @seeked="onSeeked"
+        @loaded-metadata="onLoadedMetadata"
+      >
+        <media-provider />
+        <media-video-layout />
+      </media-player>
 
-    <p id="rommInfoP" style="margin: 5px;">【{{ Allinfo.room.roomId }}】({{ getUserUserName }})</p>
-    
+      <div v-if="!roomStore.hasVideoSource" class="empty-video-state">
+        <strong>等待房主设置视频源</strong>
+        <span>当前房间不会自动加载默认视频，需要在房间设置中手动添加。</span>
+      </div>
+    </div>
 
-  </div>
-
+    <footer class="video-meta">
+      <span>#{{ roomStore.currentRoomId }} · {{ roomStore.roomName }}</span>
+      <span>{{ roomStore.isRoomOwner ? '房主' : roomStore.userName }}</span>
+    </footer>
+  </section>
 </template>
 
-<script >
-import "../assets/css/top01-button.css"
-import { reactive } from "vue";
-import { mapState,mapGetters } from "vuex"
-import { videoPlay } from 'vue3-video-play'
-import "vue3-video-play/dist/style.css";
-import socketMsg from "../utils/socketMsg";
- 
-export default ({
-    name: "huanheVideo",
-    components: {
-    videoPlay,
-  },
-  props:{},
-  //专门来读取vux的数据
-  computed:{
-        ...mapState(["MyWebSocket","socketMsgStatus","adaptiveMin","Allinfo"]),
-        ...mapGetters(["getSocketMsgInit","getVideoInfoSrc","getUserUserName"])
-  },
-    data() {
-        return {
-          options:{},
-          scoketThrottle:true,   //进度条节流函数
-        }
-    },
-    mounted() {
-      //初始化数据
-      //挂载监听事件
-      window.addEventListener('resize',this.setWandH)
-      // console.log(this.overall.width);
-        //引入播放器
-       this.options =  reactive({
-            width: null, //播放器高度
-            height: null, //播放器高度
-            src: this.getVideoInfoSrc.src,
-            type: this.getVideoInfoSrc.type
-            // color: "#409eff", //主题色
-            // speed: true, //关闭进度条拖动
-            // title: "555", //视频名称
-            // src: "https://live-hls-web-aje.getaj.net/AJE/index.m3u8", //视频源
-            // src:"https://test-streams.mux.dev/x36xhzz/x36xhzz.m3u8",
-            // src:"https://p1-webcast-xgcdn.byteimg.com/origin/tos-alisg-v-0000/ocCq4mA92AheZonwIPbG3eCslHDg4GtueUXRn6?filename=1.mp4&tg_qun=yhzyw",
-            // type:"m3u8"
-    });
-    this.setWandH()
-    },
-    
-watch: {
-    getVideoInfoSrc: { 
-      handler(nv) {
-        //对属性监听
-        console.log(nv);
-        this.options.src = nv.src
-        this.options.type = nv.type
-      },
-      deep: true,
-    },
+<script setup>
+import { computed, onBeforeUnmount, ref } from 'vue'
+import 'vidstack/player/styles/default/theme.css'
+import 'vidstack/player/styles/default/layouts/video.css'
+import 'vidstack/player'
+import 'vidstack/player/layouts/default'
+import 'vidstack/player/ui'
+import { useRoomStore } from '../stores/room'
+import { registerRemoteVideoHandler, useRoomSocket } from '../composables/useRoomSocket'
+import { ROOM_EVENTS, SOCKET_TYPES, VIDEO_EVENTS, createPlaybackMessage, createSeekMessage } from '../utils/socketMessages'
+import { throttle } from '../utils/timing'
 
-  },
+const roomStore = useRoomStore()
+const socket = useRoomSocket()
+const playerEl = ref(null)
+const playerTitle = 'Plook 一起看'
 
-    methods: {
-      // 设置长宽
-      setWandH(){
-        let screenWidth = document.body.offsetWidth;
-
-        //自适应
-        this.$store.state.adaptiveMin = (screenWidth < 700)
-
-
-        if (this.adaptiveMin) {
-        //移动端
-        this.options.width = screenWidth  + "px"
-        this.options.height = (screenWidth*(9/16)) + "px"          
-        } else {
-        //pc端
-        this.options.width = (screenWidth * 0.62) + "px"
-        this.options.height = ((screenWidth * 0.62)*(9/16)) + "px"          
-        }
-      },
-
-      onPlay(){
-        this.MyWebSocket.send(socketMsg.videoFun.play(1))
-        console.log("播放");
-      },
-      onPause(){
-        this.MyWebSocket.send(socketMsg.videoFun.play(0))
-      },
-      onPlayerSeeked(ev){
-        // 进度条更新
-        if (this.socketMsgStatus) {
-          this.MyWebSocket.send(socketMsg.videoFun.reach(ev.target.currentTime))
-        }else{
-          this.$store.commit("setSocketMsgStatus",true)
-        }
-        // if (this.scoketThrottle) {
-        //   this.scoketThrottle = false
-        //   setTimeout(() => {
-        //     this.MyWebSocket.send(socketMsg.videoFun.reach(ev.target.currentTime))
-        //     this.scoketThrottle = true
-        //   }, 100);
-        // }
-      },
-      //浏览器开始请求资源
-      loadstart(ev){
-        this.$store.commit("initMyVideo",{
-          aVideo:this.$refs.video,
-          allVideo:ev.target
-        })  //初始化数据
-
-        socketMsg.init(this.getSocketMsgInit)                       //初始化sock里面的数据      
-      },
-      test01(){
-        // let vi = document.getElementById("dPlayerVideoMain")
-        // console.log(vi.src("https://live-hls-web-aje.getaj.net/AJE/index.m3u8"));
-        // this.options.type = "m3u8"
-        // console.log(this.options.src = "https://live-hls-web-aje.getaj.net/AJE/index.m3u8");
-        console.log(this.options);
-
-      },
-      test02(){
-        // console.log(doucument.getElementById("dPlayerVideoMain"));
-        // console.log(this.$store.getters.getMyVideo.allVideo);
-        // console.log(this.$store.getters.getMyVideo.allVideo.currentTime = 2);
-
-        console.log();
-        // this.options.width
-        
-      }
-
-    }
+const playerSources = computed(() => {
+  if (!roomStore.videoSource?.src) return []
+  return [{
+    src: roomStore.videoSource.src,
+    type: normalizeVideoType(roomStore.videoSource.type),
+  }]
 })
 
+const sendSeek = throttle((currentTime) => {
+  socket.send(createSeekMessage({
+    roomId: roomStore.currentRoomId,
+    ownerId: roomStore.userName,
+    currentTime,
+  }))
+}, 500)
 
+registerRemoteVideoHandler(applyRemoteVideoMessage)
+
+onBeforeUnmount(() => {
+  registerRemoteVideoHandler(null)
+  playerEl.value?.destroy?.()
+})
+
+function onPlay() {
+  if (!roomStore.hasVideoSource || roomStore.isApplyingRemoteVideoEvent()) return
+  const currentTime = playerEl.value?.currentTime ?? 0
+  socket.send(createPlaybackMessage({
+    roomId: roomStore.currentRoomId,
+    ownerId: roomStore.userName,
+    isPlaying: true,
+    currentTime,
+  }))
+}
+
+function onPause() {
+  if (!roomStore.hasVideoSource || roomStore.isApplyingRemoteVideoEvent()) return
+  const currentTime = playerEl.value?.currentTime ?? 0
+  socket.send(createPlaybackMessage({
+    roomId: roomStore.currentRoomId,
+    ownerId: roomStore.userName,
+    isPlaying: false,
+    currentTime,
+  }))
+}
+
+function onSeeked() {
+  if (!roomStore.hasVideoSource || roomStore.isApplyingRemoteVideoEvent()) return
+  sendSeek(playerEl.value?.currentTime ?? 0)
+}
+
+function onLoadedMetadata() {
+  applyPlaybackSnapshot()
+}
+
+function applyRemoteVideoMessage(message) {
+  if (!playerEl.value || message.ownerId === roomStore.userName) return
+
+  const data = message.data || {}
+  roomStore.markRemoteVideoEvent(900)
+
+  if (message.type === SOCKET_TYPES.ROOM && data.type === ROOM_EVENTS.SNAPSHOT) {
+    applyPlaybackSnapshot()
+    return
+  }
+
+  if (data.type === VIDEO_EVENTS.PLAYBACK) {
+    if (Number.isFinite(data.currentTime)) {
+      playerEl.value.currentTime = data.currentTime
+    }
+    if (data.play === 1) {
+      playerEl.value.play?.()
+    } else {
+      playerEl.value.pause?.()
+    }
+    return
+  }
+
+  if (data.type === VIDEO_EVENTS.SEEK && Number.isFinite(data.reach)) {
+    playerEl.value.currentTime = data.reach
+  }
+}
+
+function applyPlaybackSnapshot() {
+  if (!playerEl.value || !roomStore.hasVideoSource) return
+
+  roomStore.markRemoteVideoEvent(900)
+  const playback = roomStore.playback
+  if (Number.isFinite(playback.currentTime)) {
+    playerEl.value.currentTime = playback.currentTime
+  }
+  if (playback.playing) {
+    playerEl.value.play?.()
+  } else {
+    playerEl.value.pause?.()
+  }
+}
+
+function normalizeVideoType(type) {
+  if (type === 'm3u8') {
+    return 'application/x-mpegURL'
+  }
+  return type || 'video/mp4'
+}
 </script>
-<style>
+
+<style scoped>
+.video-panel {
+  min-width: 0;
+}
+
+.player-wrap {
+  position: relative;
+  border-radius: 8px;
+  overflow: hidden;
+  background: #111827;
+}
+
+.plook-player {
+  width: 100%;
+  aspect-ratio: 16 / 9;
+  background: #111827;
+}
+
+.empty-video-state {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-content: center;
+  gap: 8px;
+  color: #e5e7eb;
+  text-align: center;
+  pointer-events: none;
+}
+
+.empty-video-state strong {
+  font-size: 18px;
+  font-weight: 700;
+}
+
+.empty-video-state span {
+  color: #9ca3af;
+  font-size: 13px;
+}
+
+.video-meta {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  margin-top: 8px;
+  color: #667085;
+  font-size: 13px;
+}
 </style>

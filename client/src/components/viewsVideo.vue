@@ -1,235 +1,546 @@
 <template>
-  <!-- 中间组件 -->
+  <section class="watch-room">
+    <huanhe-video />
 
-  <div id="div-main" class="div-main">
-    <div class="container">
-      <div id="div-video">
-        <huanhe-video ref="huanheVideo" />
-      </div>
-      <div class="chat-wrapper" id="chatWrapper">
-        <el-scrollbar ref="scrollbarRef" :height="scrollbarHeight">
-          <chat v-for="item in getRoomChatInfoMassgs" :key="item" :chats="item" :user-name="getUserUserName"
-            @ScrollbarRef="onScrollbarRef" />
-        </el-scrollbar>
-        <div class="send-msg" id="sendMsg">
-          <el-input v-model="myMassg" @change="setMyassg" placeholder="发送消息" />
-          <el-button @click="setMyassg">发送</el-button>
-        </div>
-      </div>
-    </div>
-
-    <!-- 房间设置抽屉 -->
-    <el-drawer v-model="this.$store.state.setRoom" direction="btt">
-      <template #header>
-        <h4>房间设置</h4>
-      </template>
-      <template #default>
+    <aside class="chat-panel">
+      <header class="chat-header">
         <div>
-          <el-form :inline="true" :model="videoSrc" :rules="rules" ref="videoSrcForm">
-            <el-form-item label="视频源:" prop="src">
-              <el-input v-model="videoSrc.src" style="width: 300px;" />
-            </el-form-item>
-            <el-form-item label="视频类型:" prop="type">
-              <el-select style="width: 100px;" v-model="videoSrc.type" placeholder="请选择视频源类型">
-                <el-option label="mp4" value="video/mp4" />
-                <el-option label="m3u8" value="m3u8" />
-              </el-select>
-            </el-form-item>
-            <el-form-item>
-              <el-button type="primary" @click="setVideoSrc">切换视频源</el-button>
-            </el-form-item>
-          </el-form>
+          <h2>{{ roomStore.roomName || '房间消息' }}</h2>
+          <p>#{{ roomStore.currentRoomId }} · {{ roomStore.members.length }} 人在线 · {{ roomStore.messages.length }} 条消息</p>
         </div>
-      </template>
-    </el-drawer>
+        <span class="status-pill" :class="roomStore.isConnected ? 'is-success' : 'is-danger'">
+          {{ roomStore.isConnected ? '在线' : '离线' }}
+        </span>
+      </header>
 
+      <VList ref="scrollerRef" class="chat-list" :data="roomStore.messages">
+        <template #default="{ item }">
+          <ChatMessage :message="item" :user-name="roomStore.userName" />
+        </template>
+      </VList>
 
-  </div>
+      <form class="send-msg" @submit.prevent="sendMessage">
+        <input
+          v-model="myMessage"
+          class="text-input"
+          maxlength="300"
+          placeholder="发送消息"
+          @keyup.enter.exact.prevent="sendMessage"
+        />
+        <button class="primary-button" type="submit" :disabled="!roomStore.isConnected">发送</button>
+      </form>
+    </aside>
+
+    <div v-if="roomStore.isRoomSettingsOpen" class="drawer-backdrop" @click.self="roomStore.closeRoomSettings">
+      <section class="settings-drawer">
+        <header class="drawer-header">
+          <div>
+            <h2 class="drawer-title">房间设置</h2>
+            <p>{{ roomStore.isRoomOwner ? '你是房主，可以调整房间可见性、密码和视频源。' : '当前仅房主可以调整房间设置。' }}</p>
+          </div>
+          <button class="icon-button" type="button" aria-label="关闭" @click="roomStore.closeRoomSettings">x</button>
+        </header>
+
+        <div class="settings-grid">
+          <form class="settings-section" @submit.prevent="saveRoomSettings">
+            <header>
+              <h3>房间信息</h3>
+              <span>{{ roomStore.hidden ? '私密房间' : '公开房间' }}</span>
+            </header>
+
+            <label>
+              <span>房间名</span>
+              <input
+                v-model="settingsDraft.roomName"
+                class="text-input"
+                :disabled="!roomStore.isRoomOwner"
+                maxlength="30"
+              />
+            </label>
+
+            <label>
+              <span>房间密码</span>
+              <input
+                v-model="settingsDraft.password"
+                class="text-input"
+                :disabled="!roomStore.isRoomOwner"
+                maxlength="40"
+                type="password"
+                :placeholder="roomStore.hasPassword ? '留空将清除当前密码' : '可选，不填则无密码'"
+              />
+            </label>
+
+            <label class="toggle-row">
+              <input v-model="settingsDraft.hidden" type="checkbox" :disabled="!roomStore.isRoomOwner" />
+              <span>隐藏房间，不显示在公开房间列表</span>
+            </label>
+
+            <button class="primary-button" type="submit" :disabled="!roomStore.isRoomOwner">
+              保存房间设置
+            </button>
+          </form>
+
+          <form class="settings-section" @submit.prevent="setVideoSrc">
+            <header>
+              <h3>视频源</h3>
+              <span>{{ roomStore.sourceLocked ? '已锁定' : '未锁定' }}</span>
+            </header>
+
+            <div v-if="roomStore.isRoomOwner" class="lock-row">
+              <label class="switch">
+                <input v-model="sourceLockedDraft" type="checkbox" @change="toggleSourceLock" />
+                <span></span>
+              </label>
+              <div>
+                <strong>{{ roomStore.sourceLocked ? '视频源已锁定' : '视频源未锁定' }}</strong>
+                <small>锁定后只有房主可以修改视频源。</small>
+              </div>
+            </div>
+
+            <label>
+              <span>视频源地址</span>
+              <input
+                v-model="videoSrc.src"
+                class="text-input"
+                :disabled="!canEditSource"
+                placeholder="https://example.com/video.mp4"
+              />
+            </label>
+
+            <fieldset :disabled="!canEditSource">
+              <legend>视频类型</legend>
+              <div class="segmented">
+                <label v-for="option in videoTypeOptions" :key="option.value">
+                  <input v-model="videoSrc.type" type="radio" :value="option.value" />
+                  <span>{{ option.label }}</span>
+                </label>
+              </div>
+            </fieldset>
+
+            <p v-if="formError" class="form-error">{{ formError }}</p>
+            <button class="primary-button" type="submit" :disabled="!canEditSource">切换视频源</button>
+          </form>
+        </div>
+      </section>
+    </div>
+  </section>
 </template>
 
-<script >
-import HuanheVideo from '../components/Huanhe-video.vue';
-import chat from "../components/chat.vue"
-import otherFun from '../utils/socketMsgother';
-import { ElMessage } from "element-plus";
-import { mapGetters, mapState } from "vuex"
+<script setup>
+import { computed, nextTick, reactive, ref, watch } from 'vue'
+import { VList } from 'virtua/vue'
+import { toast } from 'vue-sonner'
+import HuanheVideo from './Huanhe-video.vue'
+import ChatMessage from './chat.vue'
+import { useRoomStore } from '../stores/room'
+import { useRoomSocket } from '../composables/useRoomSocket'
 
+const roomStore = useRoomStore()
+const socket = useRoomSocket()
+const scrollerRef = ref(null)
+const myMessage = ref('')
+const videoSrc = reactive({ src: '', type: 'video/mp4' })
+const settingsDraft = reactive({ roomName: '', password: '', hidden: false })
+const sourceLockedDraft = ref(false)
+const formError = ref('')
 
-export default {
-  name: "viewsVideo",
-  components: {
-    HuanheVideo,
-    chat
+const videoTypeOptions = [
+  { label: 'MP4', value: 'video/mp4' },
+  { label: 'M3U8', value: 'm3u8' },
+]
+
+const canEditSource = computed(() => !roomStore.sourceLocked || roomStore.isRoomOwner)
+
+watch(
+  () => roomStore.videoSource,
+  (source) => {
+    videoSrc.src = source?.src || ''
+    videoSrc.type = source?.type || 'video/mp4'
   },
-  //专门来读取vux的数据
-  computed: {
-    ...mapState(["MyWebSocket", "Allinfo", "adaptiveMin"]),
-    ...mapGetters(["getRoomChatInfoMassgs", "getUserUserName", "getVideoInfoSrc"]),
+  { deep: true, immediate: true },
+)
+
+watch(
+  () => [roomStore.roomName, roomStore.hidden],
+  () => {
+    settingsDraft.roomName = roomStore.roomName
+    settingsDraft.password = ''
+    settingsDraft.hidden = roomStore.hidden
   },
-  data() {
-    return {
-      myMassg: "",   //我要发送的消息
-      scrollbarHeight: "100px", //消息的长度
-      videoSrc: {
-        src: null,
-        type: null
-      },
-      //表单验证
-      rules: {
-        src: [{ required: true, message: '请输入视频源', trigger: 'blur', }, { pattern: /^([hH][tT]{2}[pP]:\/\/|[hH][tT]{2}[pP][sS]:\/\/)(([A-Za-z0-9-~]+)\.)+([A-Za-z0-9-~\/])+(..)+$/, message: '请输入正确的视频源', trigger: 'blur' }],
-        type: [{ required: true, message: '请输入视频类型', trigger: 'blur', }]
-      }
-    }
+  { immediate: true },
+)
+
+watch(
+  () => roomStore.sourceLocked,
+  (locked) => {
+    sourceLockedDraft.value = locked
   },
-  mounted() {
-    // console.log(this.getVideoInfoSrc.url);
-    this.videoSrc.src = this.getVideoInfoSrc.src
-    this.videoSrc.type = this.getVideoInfoSrc.type
-    console.log(this.videoSrc.type);
+  { immediate: true },
+)
 
-    //自适应
-
-    let screenWidth = document.body.offsetWidth;
-    this.$store.commit("setadaptiveMin", (screenWidth < 700))
-    //小布局则初始化
-
-    this.setWandH()
-    window.addEventListener('resize', this.setWandH)
-    //延迟执行控件读取
-    setTimeout(() => { this.setWandH() }, 1);
-
+watch(
+  () => roomStore.messages.length,
+  async (length) => {
+    await nextTick()
+    scrollerRef.value?.scrollToIndex?.(Math.max(length - 1, 0))
   },
-  methods: {
+)
 
-    // 设置长宽
-    setWandH() {
-      const mainHeight = document.getElementsByTagName("main")[0].offsetHeight
-      const divVideoHeight = document.getElementById('div-video').offsetHeight
-      const sendMsgHeight = document.getElementById('sendMsg').offsetHeight
-      if (this.adaptiveMin) {
-        this.scrollbarHeight = (mainHeight - divVideoHeight - sendMsgHeight - 40) + "px"
-      } else {
-        this.scrollbarHeight = (divVideoHeight - sendMsgHeight - 20) + "px"
-      }
-    },
+function sendMessage() {
+  if (socket.sendChat(myMessage.value)) {
+    myMessage.value = ''
+  }
+}
 
-    onScrollbarRef() {
-      //组件渲染回调,自动底部
-      this.$refs.scrollbarRef.setScrollTop(this.$refs.scrollbarRef.wrapRef.firstChild.clientHeight)
-    },
-
-    setVideoSrc() {
-      //设置视频资源
-      let than = this
-      this.$refs.videoSrcForm.validate(valid => {
-        if (valid) {
-          //切换视频资源
-          than.$store.commit("setVideoInfoSrc", {
-            src: than.videoSrc.src,
-            type: than.videoSrc.type
-          })//防止绑定
-
-          than.MyWebSocket.send(otherFun.setVideoSrcFun(than.videoSrc))
-          ElMessage.success("切换视频源成功")
-        }
-      })
-    },
-    //===============
-    //发送消息
-    setMyassg() {
-      let socketMsg = otherFun.setMyassg(this.myMassg)
-      this.MyWebSocket.send(socketMsg) //发送消息
-      this.$store.commit("setRoomChatInfoMassg", JSON.parse(socketMsg))
-      this.myMassg = "" //清空编辑框
-      ElMessage.success('发送成功.')
-    },
+function saveRoomSettings() {
+  if (!roomStore.isRoomOwner) return
+  if (!settingsDraft.roomName.trim()) {
+    toast.error('房间名不能为空')
+    return
   }
 
+  socket.updateRoomSettings({
+    roomName: settingsDraft.roomName.trim(),
+    password: settingsDraft.password.trim(),
+    hidden: settingsDraft.hidden,
+  })
+  settingsDraft.password = ''
+}
+
+function toggleSourceLock() {
+  if (!roomStore.isRoomOwner) return
+  socket.setSourceLocked(sourceLockedDraft.value)
+}
+
+function setVideoSrc() {
+  formError.value = validateVideoSource(videoSrc)
+  if (formError.value) return
+
+  if (socket.sendSource({ ...videoSrc })) {
+    toast.success('视频源已提交')
+  }
+}
+
+function validateVideoSource(source) {
+  if (!source.src) return '请输入视频源'
+
+  try {
+    const url = new URL(source.src)
+    if (!['http:', 'https:'].includes(url.protocol)) {
+      return '只支持 HTTP/HTTPS 视频源'
+    }
+  } catch {
+    return '请输入正确的视频源地址'
+  }
+
+  if (!source.type) return '请选择视频类型'
+  return ''
 }
 </script>
-<style>
-/* Use flexbox to center the div-video element horizontally and vertically */
-/* 将#div-video元素设置为flex布局，使其内部元素在水平和垂直方向上都居中 */
-#div-video {
+
+<style scoped>
+.watch-room {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(300px, 360px);
+  gap: 16px;
+  min-height: calc(100vh - 136px);
+}
+
+.chat-panel {
+  min-height: 0;
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr) auto;
+  border: 1px solid #d8dee8;
+  border-radius: 8px;
+  background: #fff;
+}
+
+.chat-header {
   display: flex;
-  justify-content: center;
-  align-items: center;
-  margin: 0px;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 14px 14px 10px;
+  border-bottom: 1px solid #edf0f5;
 }
 
-.scrollbar-demo-item {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  height: 50px;
-  margin: 10px;
-  text-align: center;
-  border-radius: 4px;
-  background: var(--el-color-primary-light-9);
-  color: var(--el-color-primary);
+.chat-header h2 {
+  margin: 0;
+  font-size: 16px;
+  letter-spacing: 0;
 }
 
-.el-container {
-  display: flex;
-  flex-direction: column;
-  height: 100vh;
+.chat-header p,
+.drawer-header p {
+  margin: 4px 0 0;
+  color: #667085;
+  font-size: 12px;
 }
 
-.el-main {
-  flex: 1;
-}
-
-.el-footer {
-  flex-shrink: 0;
+.chat-list {
+  min-height: 320px;
+  padding: 12px;
 }
 
 .send-msg {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 8px;
+  padding: 12px;
+  border-top: 1px solid #edf0f5;
+}
+
+.text-input {
+  min-width: 0;
+  height: 38px;
+  padding: 0 10px;
+  border: 1px solid #cfd7e3;
+  border-radius: 8px;
+  outline: none;
+}
+
+.text-input:focus {
+  border-color: #2563eb;
+  box-shadow: 0 0 0 3px rgb(37 99 235 / 12%);
+}
+
+.text-input:disabled,
+fieldset:disabled {
+  opacity: 0.64;
+  cursor: not-allowed;
+}
+
+.primary-button {
+  height: 38px;
+  padding: 0 14px;
+  border: 0;
+  border-radius: 8px;
+  background: #2563eb;
+  color: #fff;
+  cursor: pointer;
+}
+
+.primary-button:disabled {
+  background: #98a2b3;
+  cursor: not-allowed;
+}
+
+.status-pill {
+  padding: 4px 8px;
+  border: 1px solid #d8dee8;
+  border-radius: 999px;
+  font-size: 12px;
+}
+
+.status-pill.is-success {
+  border-color: #9ad5a5;
+  background: #f0faf2;
+  color: #237a37;
+}
+
+.status-pill.is-danger {
+  border-color: #f2aaa4;
+  background: #fff1f0;
+  color: #a33127;
+}
+
+.drawer-backdrop {
+  position: fixed;
+  z-index: 900;
+  inset: 0;
+  display: grid;
+  align-items: end;
+  background: rgb(15 23 42 / 38%);
+}
+
+.settings-drawer {
+  width: 100%;
+  max-height: min(86vh, 760px);
+  overflow: auto;
+  padding: 18px;
+  border-radius: 12px 12px 0 0;
+  background: #fff;
+  box-shadow: 0 -16px 36px rgb(31 45 61 / 18%);
+}
+
+.drawer-header {
   display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 14px;
+}
+
+.drawer-title {
+  margin: 0;
+  font-size: 18px;
+  letter-spacing: 0;
+}
+
+.icon-button {
+  width: 32px;
+  height: 32px;
+  border: 1px solid #cfd7e3;
+  border-radius: 8px;
+  background: #fff;
+  cursor: pointer;
+}
+
+.settings-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 16px;
+}
+
+.settings-section {
+  display: grid;
+  align-content: start;
+  gap: 14px;
+  padding: 14px;
+  border: 1px solid #d8dee8;
+  border-radius: 8px;
+  background: #fff;
+}
+
+.settings-section header {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.settings-section h3 {
+  margin: 0;
+  font-size: 15px;
+}
+
+.settings-section header span,
+.settings-section label > span,
+.settings-section legend {
+  color: #667085;
+  font-size: 13px;
+}
+
+.settings-section label,
+.settings-section fieldset {
+  display: grid;
+  gap: 6px;
+}
+
+.settings-section fieldset {
+  margin: 0;
+  padding: 0;
+  border: 0;
+}
+
+.toggle-row {
+  grid-template-columns: auto minmax(0, 1fr);
   align-items: center;
 }
 
-.room-info {
-  margin: 0px 20px;
-  max-width: 30%;
+.toggle-row input {
+  width: 16px;
+  height: 16px;
+}
+
+.lock-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px;
+  border: 1px solid #d8dee8;
+  border-radius: 8px;
+  background: #f8fafc;
+}
+
+.lock-row strong,
+.lock-row small {
   display: block;
 }
 
-.up {
-  max-width: 30%;
-  margin: 0px 0%;
+.lock-row small {
+  margin-top: 3px;
+  color: #667085;
 }
 
+.switch input {
+  position: absolute;
+  opacity: 0;
+}
 
-/* cs */
-@media (min-width: 700px) {
+.switch span {
+  width: 42px;
+  height: 24px;
+  display: block;
+  position: relative;
+  border-radius: 999px;
+  background: #cbd5e1;
+  cursor: pointer;
+}
 
-  .container {
-    display: grid;
-    grid-template-columns: 18fr 6fr;
-    gap: 10px;
+.switch span::after {
+  content: '';
+  position: absolute;
+  top: 3px;
+  left: 3px;
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  background: #fff;
+  transition: transform 160ms ease;
+}
+
+.switch input:checked + span {
+  background: #2563eb;
+}
+
+.switch input:checked + span::after {
+  transform: translateX(18px);
+}
+
+.segmented {
+  display: flex;
+  gap: 8px;
+}
+
+.segmented label {
+  display: block;
+}
+
+.segmented input {
+  position: absolute;
+  opacity: 0;
+}
+
+.segmented span {
+  display: block;
+  min-width: 78px;
+  padding: 8px 12px;
+  border: 1px solid #cfd7e3;
+  border-radius: 8px;
+  color: #1f2937;
+  text-align: center;
+  cursor: pointer;
+}
+
+.segmented input:checked + span {
+  border-color: #2563eb;
+  background: #eff6ff;
+  color: #1d4ed8;
+}
+
+.form-error {
+  margin: 0;
+  color: #b42318;
+  font-size: 13px;
+}
+
+@media (max-width: 960px) {
+  .settings-grid,
+  .watch-room {
+    grid-template-columns: 1fr;
   }
 
-  #div-video {
-    grid-column: 1;
-  }
-
-  .chat-wrapper {
-    display: flex;
-    flex-direction: column;
-    max-height: 640px;
-  }
-
-  .send-msg {
-    display: flex;
-    align-items: center;
-  }
-
-  .send-msg el-input {
-    margin-right: 10px;
-  }
-
-  .send-msg el-button {
-    min-width: 60px;
+  .chat-panel {
+    min-height: 420px;
   }
 }
 </style>

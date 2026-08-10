@@ -1,120 +1,103 @@
 <template>
-    <el-container>
+  <div class="app-shell">
+    <div class="app-header-row">
+      <layout-header />
+    </div>
 
+    <main class="app-main">
+      <router-view @join-room="joinRoom" @create-room="createRoom" />
+    </main>
 
-        <el-header>
-            <layoutHeader />
-        </el-header>
-
-        <el-main>
-            <router-view @getIntoRoom="getIntoRoom"></router-view>
-        </el-main>
-
-        <el-footer>
-            <layoutFooter />
-        </el-footer>
-    </el-container>
+    <div class="app-footer-row">
+      <layout-footer />
+    </div>
+  </div>
 </template>
 
-<script >
-import layoutHeader from "../layout/layoutHeader.vue";
-import layoutFooter from "../layout/layoutFooter.vue";
-import otherFun from "../utils/socketMsgother"
-import socket from '../utils/socketFun';
-import Cookies from "js-cookie";
-import { mapState } from "vuex"
-// import HuanheVideo from '../components/Huanhe-video.vue';
-// import chat from "../components/chat.vue"
-export default {
-    name: "viewsVideo",
-    components: {
-        layoutFooter,
-        layoutHeader,
-        // HuanheVideo,
-        // chat
-    },
-    //专门来读取vux的数据
-    computed:{
-      ...mapState(["Allinfo","MyWebSocket"])
-    },
-    data() {
-        return {}
-    },
-    mounted() {
-        //用户名暂时按照username存的
+<script setup>
+import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
+import { useRoute, useRouter } from 'vue-router'
+import layoutHeader from '../layout/layoutHeader.vue'
+import layoutFooter from '../layout/layoutFooter.vue'
+import { useRoomStore } from '../stores/room'
+import { useRoomSocket } from '../composables/useRoomSocket'
+import { getSavedUserName } from '../utils/session'
 
-        //判断cookie是否存在，来连接websocket
-        if(Cookies.get("userId")){
-            socket.initWebSocket(Cookies.get("userId"))
-            this.$store.commit("initMyWebSocket",socket.getWebsock())
-        }else{
-            this.$router.push("/login")
-        }
-        // socket.initWebSocket(this.Allinfo.user.userName)
-       
+const route = useRoute()
+const router = useRouter()
+const roomStore = useRoomStore()
+const socket = useRoomSocket()
+const autoJoinRoomId = ref('')
 
-    },
-    methods: {
+const routeRoomId = computed(() => {
+  const value = String(route.params.roomId || '').trim()
+  return /^\d{6}$/.test(value) ? value : ''
+})
 
-      // 进入房间回调
-      getIntoRoom(){
-        console.log(this.Allinfo);
-        this.MyWebSocket.send(otherFun.getIntoRoomFun(this.Allinfo))
-        this.$router.push("video")
-      },
-    }
+onMounted(() => {
+  const cachedUserName = getSavedUserName()
+  if (!cachedUserName) {
+    router.push({ name: 'login' })
+    return
+  }
 
+  roomStore.setUserName(cachedUserName)
+  socket.connect(cachedUserName)
+})
+
+onBeforeUnmount(() => {
+  socket.disconnect()
+})
+
+watch(
+  () => [roomStore.socketStatus, routeRoomId.value],
+  ([status, roomId]) => {
+    if (status !== 'open' || !roomId) return
+    if (roomStore.currentRoomId === roomId || autoJoinRoomId.value === roomId) return
+
+    autoJoinRoomId.value = roomId
+    socket.joinRoom({ roomId })
+  },
+  { immediate: true },
+)
+
+watch(
+  () => roomStore.currentRoomId,
+  (roomId) => {
+    if (!roomId || routeRoomId.value === roomId) return
+    router.replace({ name: 'video', params: { roomId } })
+  },
+)
+
+function joinRoom(payload) {
+  socket.joinRoom(payload)
+}
+
+function createRoom(payload) {
+  socket.createRoom(payload)
 }
 </script>
+
 <style scoped>
-/* Use flexbox to center the div-video element horizontally and vertically */
-/* 将#div-video元素设置为flex布局，使其内部元素在水平和垂直方向上都居中 */
-#div-video {
-    display: flex;
-    justify-content: center;
-    align-items: center;
-    margin: 20px;
+.app-shell {
+  display: grid;
+  grid-template-rows: 60px minmax(0, 1fr) 44px;
+  min-height: 100vh;
+  background: #f6f8fb;
 }
 
-.scrollbar-demo-item {
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    height: 50px;
-    margin: 10px;
-    text-align: center;
-    border-radius: 4px;
-    background: var(--el-color-primary-light-9);
-    color: var(--el-color-primary);
+.app-header-row {
+  border-bottom: 1px solid #d8dee8;
+  background: #fff;
 }
 
-.el-container {
-    display: flex;
-    flex-direction: column;
-    height: 100vh;
+.app-main {
+  min-height: 0;
+  padding: 16px;
 }
 
-.el-main {
-    flex: 1;
-}
-
-.el-footer {
-    flex-shrink: 0;
-}
-
-.send-msg {
-    display: flex;
-    align-items: center;
-}
-
-.room-info {
-    margin: 0px 20px;
-    max-width: 30%;
-    display: block;
-}
-
-.up {
-    max-width: 30%;
-    margin: 0px 0%;
+.app-footer-row {
+  border-top: 1px solid #d8dee8;
+  background: #fff;
 }
 </style>
