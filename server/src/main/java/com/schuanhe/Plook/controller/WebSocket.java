@@ -17,6 +17,8 @@ import java.io.EOFException;
 import java.io.IOException;
 import java.net.SocketException;
 import java.nio.channels.ClosedChannelException;
+import java.util.List;
+import java.util.Map;
 import java.util.Objects;
 
 @Slf4j
@@ -26,20 +28,25 @@ public class WebSocket {
 
     private Session session;
     private String name;
+    private String sid;
     private final Object sendLock = new Object();
 
     @OnOpen
     public void onOpen(Session session, @PathParam("name") String name) {
         this.session = session;
         this.name = name;
+        this.sid = firstParam(session, "sid");
         CurPool.registerSocket(name, this);
-        log.info("[socket-open] name={} session={} online={}", name, session.getId(), CurPool.onlineSocketCount());
-        sendMessageList(SocketService.onOpen(name));
+        log.info("[socket-open] name={} sid={} session={} online={}", name, sid, session.getId(), CurPool.onlineSocketCount());
+        publish(SocketService.onOpen(name, sid));
     }
 
     @OnClose
     public void onClose() {
-        sendMessageList(SocketService.onClose(this.name));
+        // 仅当自己仍是该昵称的当前连接时才触发断线处理，避免被顶替的旧连接误退房。
+        if (CurPool.removeSocketIfCurrent(this.name, this)) {
+            publish(SocketService.onDisconnect(this.name, this.sid));
+        }
         log.info("[socket-close] name={} online={}", name, CurPool.onlineSocketCount());
     }
 
@@ -55,11 +62,25 @@ public class WebSocket {
     @OnMessage
     public void onMessage(String message) {
         log.debug("[socket-message] name={} payload={}", name, message);
-        sendMessageList(SocketService.onMessage(message, name));
+        publish(SocketService.onMessage(message, name));
     }
 
-    public void sendMessageList(SocketDispatch dispatch) {
-        publish(dispatch);
+    public String sid() {
+        return sid;
+    }
+
+    public boolean isOpen() {
+        return session != null && session.isOpen();
+    }
+
+    public void closeQuietly() {
+        try {
+            if (session != null && session.isOpen()) {
+                session.close();
+            }
+        } catch (IOException ex) {
+            log.debug("[socket-close-failed] name={}", name, ex);
+        }
     }
 
     public static void publish(SocketDispatch dispatch) {
@@ -89,14 +110,19 @@ public class WebSocket {
                     targetSession.getBasicRemote().sendText(message);
                 } catch (IOException | IllegalStateException ex) {
                     log.warn("[socket-send-failed] target={} message={}", targetName, ex.getMessage());
-                    try {
-                        targetSession.close();
-                    } catch (IOException closeError) {
-                        log.debug("[socket-close-failed] target={}", targetName, closeError);
-                    }
+                    socket.closeQuietly();
                 }
             }
         }, () -> log.debug("[socket-send-skip] target={} reason=missing", targetName));
+    }
+
+    private static String firstParam(Session session, String key) {
+        Map<String, List<String>> params = session.getRequestParameterMap();
+        if (params == null) {
+            return null;
+        }
+        List<String> values = params.get(key);
+        return values == null || values.isEmpty() ? null : values.get(0);
     }
 
     private static boolean isExpectedDisconnect(Throwable throwable) {

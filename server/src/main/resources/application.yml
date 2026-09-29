@@ -11,6 +11,7 @@ app:
   rooms:
     allow-create: ${PLOOK_ALLOW_CREATE_ROOMS:true}
     empty-disband-minutes: ${PLOOK_EMPTY_DISBAND_MINUTES:10}
+    reconnect-grace-seconds: ${PLOOK_RECONNECT_GRACE_SECONDS:360}
 
 management:
   endpoint:

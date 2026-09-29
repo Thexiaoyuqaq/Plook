@@ -1,7 +1,7 @@
 {
   "name": "plook-client",
   "private": true,
-  "version": "0.1.0",
+  "version": "0.2.0",
   "type": "module",
   "scripts": {
     "dev": "vite --host 0.0.0.0",
@@ -9,19 +9,19 @@
     "preview": "vite preview --host 0.0.0.0"
   },
   "dependencies": {
-    "pinia": "^3.0.3",
-    "vidstack": "next",
-    "vue-sonner": "^2.0.9",
-    "virtua": "^0.43.1",
-    "vue": "^3.5.18",
-    "vue-router": "^4.5.1"
+    "hls.js": "^1.5.20",
+    "lucide-react": "^1.48.0",
+    "motion": "^13.4.6",
+    "react": "^19.3.0",
+    "react-dom": "^19.3.0",
+    "react-router-dom": "^7.18.4",
+    "sonner": "^2.0.8",
+    "zustand": "^5.0.15"
   },
   "devDependencies": {
-    "@vitejs/plugin-vue": "^6.0.1",
-    "vite": "^7.0.6"
-  },
-  "overrides": {
-    "esbuild": "^0.25.8",
-    "rollup": "^4.45.1"
+    "@tailwindcss/vite": "^4.3.3",
+    "@vitejs/plugin-react": "^6.1.1",
+    "tailwindcss": "^4.3.3",
+    "vite": "^8.3.1"
   }
 }

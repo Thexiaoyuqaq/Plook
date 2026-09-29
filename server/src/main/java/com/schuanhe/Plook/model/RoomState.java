@@ -1,17 +1,26 @@
 package com.schuanhe.Plook.model;
 
+import java.util.ArrayDeque;
 import java.util.ArrayList;
-import java.util.Collections;
-import java.util.LinkedHashSet;
+import java.util.Deque;
 import java.util.List;
 import java.util.Objects;
-import java.util.Set;
+import java.util.function.Predicate;
 
+/**
+ * 单个房间的内存状态：成员、视频源、播放状态、房间历史（最多 50 条）。
+ * 所有可变状态的读写都在实例锁内完成，保证并发安全。
+ */
 public final class RoomState {
+
+    /** 每个活跃房间保留的历史消息上限。 */
+    public static final int HISTORY_LIMIT = 50;
+
     private final String roomId;
     private final String ownerId;
     private final long createdAt;
-    private final Set<String> members = new LinkedHashSet<>();
+    private final java.util.Set<String> members = new java.util.LinkedHashSet<>();
+    private final Deque<ChatLogEntry> history = new ArrayDeque<>();
 
     private String roomName;
     private String passwordHash;
@@ -46,17 +55,54 @@ public final class RoomState {
         return removed;
     }
 
+    public synchronized boolean contains(String username) {
+        return members.contains(username);
+    }
+
     public synchronized List<String> membersSnapshot() {
         List<String> snapshot = new ArrayList<>(members);
-        Collections.sort(snapshot);
+        snapshot.sort(String::compareTo);
         return snapshot;
+    }
+
+    /** 解散房间：清空成员并返回原成员列表（用于通知）。 */
+    public synchronized List<String> disband(long now) {
+        List<String> previous = membersSnapshot();
+        members.clear();
+        emptySince = now;
+        return previous;
+    }
+
+    public synchronized void appendChat(ChatLogEntry entry) {
+        if (entry == null) {
+            return;
+        }
+        history.addLast(entry);
+        while (history.size() > HISTORY_LIMIT) {
+            history.removeFirst();
+        }
+    }
+
+    public synchronized List<ChatLogEntry> historySnapshot() {
+        return new ArrayList<>(history);
     }
 
     public synchronized RoomSummary summary() {
         return new RoomSummary(roomId, roomName, ownerId, members.size(), sourceLocked, hidden, hasPassword(), emptySince, createdAt);
     }
 
-    public synchronized RoomSnapshot snapshot(String viewer, long now) {
+    /**
+     * 构建房间快照。
+     *
+     * @param onlineCheck   判断某成员当前是否有活跃连接（在线 vs 宽限期离线）
+     * @param includeHistory 是否携带历史消息（仅加入/重连快照为 true）
+     */
+    public synchronized RoomSnapshot snapshot(String viewer, long now, Predicate<String> onlineCheck, boolean includeHistory) {
+        List<MemberInfo> memberInfos = new ArrayList<>();
+        for (String member : membersSnapshot()) {
+            boolean online = onlineCheck == null || onlineCheck.test(member);
+            memberInfos.add(new MemberInfo(member, online, Objects.equals(ownerId, member)));
+        }
         return new RoomSnapshot(
                 roomId,
                 roomName,
@@ -65,9 +111,10 @@ public final class RoomState {
                 sourceLocked,
                 hidden,
                 hasPassword(),
-                membersSnapshot(),
+                memberInfos,
                 videoSource,
                 playback.snapshot(now),
+                includeHistory ? historySnapshot() : null,
                 emptySince,
                 createdAt
         );

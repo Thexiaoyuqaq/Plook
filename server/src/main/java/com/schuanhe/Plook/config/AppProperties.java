@@ -9,6 +9,6 @@ public record AppProperties(Cors cors, Rooms rooms) {
     public record Cors(List<String> allowedOriginPatterns) {
     }
 
-    public record Rooms(boolean allowCreate, long emptyDisbandMinutes) {
+    public record Rooms(boolean allowCreate, long emptyDisbandMinutes, long reconnectGraceSeconds) {
     }
 }

@@ -17,7 +17,7 @@ class SocketServiceTest {
 
     @Test
     void onOpenReturnsEmptyRoomListWhenNoUserCreatedRoomsExist() {
-        SocketDispatch dispatch = SocketService.onOpen("alice");
+        SocketDispatch dispatch = SocketService.onOpen("alice", null);
 
         assertThat(dispatch.names()).containsExactly("alice");
         assertThat(dispatch.data()).contains("\"roomList\":[]");
@@ -51,7 +51,7 @@ class SocketServiceTest {
     void hiddenCreatedRoomDoesNotEnterPublicList() {
         SocketService.onMessage(roomCreate("private-room", "alice", "", true), "alice");
 
-        SocketDispatch dispatch = SocketService.onOpen("bob");
+        SocketDispatch dispatch = SocketService.onOpen("bob", null);
 
         assertThat(dispatch.data()).contains("\"roomList\":[]");
     }
@@ -119,6 +119,46 @@ class SocketServiceTest {
         assertThat(dispatch.hasPayload()).isFalse();
     }
 
+    @Test
+    void ownerCanDisbandRoomAndAllMembersAreNotified() {
+        SocketService.onMessage(roomCreate("room-a", "alice", "", false), "alice");
+        String roomId = CurPool.roomIds().get(0);
+        SocketService.onMessage(roomJoin(roomId, "bob", ""), "bob");
+
+        SocketDispatch dispatch = SocketService.onMessage(disband(roomId, "alice"), "alice");
+
+        assertThat(dispatch.names()).containsExactlyInAnyOrder("alice", "bob");
+        assertThat(dispatch.data()).contains("\"type\":7");
+        assertThat(dispatch.data()).contains("room_disbanded");
+        assertThat(CurPool.roomIds()).doesNotContain(roomId);
+    }
+
+    @Test
+    void nonOwnerCannotDisbandRoom() {
+        SocketService.onMessage(roomCreate("room-a", "alice", "", false), "alice");
+        String roomId = CurPool.roomIds().get(0);
+        SocketService.onMessage(roomJoin(roomId, "bob", ""), "bob");
+
+        SocketDispatch dispatch = SocketService.onMessage(disband(roomId, "bob"), "bob");
+
+        assertThat(dispatch.names()).containsExactly("bob");
+        assertThat(dispatch.data()).contains("owner_required");
+        assertThat(CurPool.roomIds()).contains(roomId);
+    }
+
+    @Test
+    void playbackRateEventBroadcastsToRoom() {
+        SocketService.onMessage(roomCreate("room-a", "alice", "", false), "alice");
+        String roomId = CurPool.roomIds().get(0);
+        SocketService.onMessage(roomJoin(roomId, "bob", ""), "bob");
+
+        SocketDispatch dispatch = SocketService.onMessage(rate(roomId, "alice", 2.0d), "alice");
+
+        assertThat(dispatch.data()).contains("\"type\":3");
+        assertThat(dispatch.data()).contains("\"rate\":2.0");
+        assertThat(dispatch.ownerId()).isEqualTo("alice");
+    }
+
     private static String roomCreate(String roomName, String ownerId, String password, boolean hidden) {
         return """
                 {"type":1,"data":{"type":3,"roomName":"%s","password":"%s","hidden":%s},"roomId":null,"ownerId":"%s","sentAt":1}
@@ -147,5 +187,17 @@ class SocketServiceTest {
         return """
                 {"type":2,"data":{"type":2,"src":"%s","srcType":"video/mp4"},"roomId":"%s","ownerId":"%s","sentAt":1}
                 """.formatted(src, roomId, ownerId);
+    }
+
+    private static String disband(String roomId, String ownerId) {
+        return """
+                {"type":1,"data":{"type":7},"roomId":"%s","ownerId":"%s","sentAt":1}
+                """.formatted(roomId, ownerId);
+    }
+
+    private static String rate(String roomId, String ownerId, double rate) {
+        return """
+                {"type":2,"data":{"type":3,"rate":%s},"roomId":"%s","ownerId":"%s","sentAt":1}
+                """.formatted(rate, roomId, ownerId);
     }
 }

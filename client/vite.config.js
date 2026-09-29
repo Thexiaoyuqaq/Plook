@@ -1,12 +1,18 @@
 import { defineConfig, loadEnv } from 'vite'
-import vue from '@vitejs/plugin-vue'
+import react from '@vitejs/plugin-react'
+import tailwindcss from '@tailwindcss/vite'
 
 export default defineConfig(({ mode }) => {
   const env = loadEnv(mode, process.cwd(), '')
 
   return {
     base: env.VITE_BASE_URL || '/',
-    plugins: [vue()],
+    plugins: [react(), tailwindcss()],
+    resolve: {
+      alias: {
+        '@': new URL('./src', import.meta.url).pathname,
+      },
+    },
     server: {
       port: 5173,
       host: '0.0.0.0',
@@ -14,18 +20,6 @@ export default defineConfig(({ mode }) => {
     preview: {
       port: 4173,
       host: '0.0.0.0',
-    },
-    build: {
-      rollupOptions: {
-        output: {
-          manualChunks: {
-            vue: ['vue', 'vue-router', 'pinia'],
-            media: ['vidstack'],
-            notifications: ['vue-sonner'],
-            virtual: ['virtua/vue'],
-          },
-        },
-      },
     },
   }
 })
